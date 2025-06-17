@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+# from xformers import ops
 
 class PropagationModule(nn.Module):
     def __init__(self, cfg) -> None:

@@ -90,18 +90,43 @@ class CamoSam(L.LightningModule):
     def check_frequency(self, check_idx):
         return check_idx % self.epoch_freq == 0
 
+
+    # @torch.no_grad()
+    # def log_images(self, information, img_dict, sep_mask_dict, mask_dict, gt_mask_dict, iou_dict, batch_idx, train=True):
+    #     start_idx = 1 if self.cfg.dataset.stage1 else self.cfg.dataset.num_frames-1
+    #     for frame_idx in range(len(information)):
+    #         log_dict = []
+    #         for t in range(start_idx, self.cfg.dataset.num_frames):
+    #             log_dict.append({"ground_truth": {"mask_data" : gt_mask_dict[t][frame_idx].cpu().numpy()}, "prediction": {"mask_data" : mask_dict[t][frame_idx].cpu().numpy()}})
+    #             for obj_index, sep_obj in enumerate(sep_mask_dict[t][frame_idx]):
+    #                 log_dict[-1][f"prediction_{obj_index + 1}"] = {"mask_data" : sep_obj.cpu().numpy() * (obj_index + 1)}
+    #
+    #         self.logger.log_image(f"Images/{'train' if train else 'test'}/{information[frame_idx]['name']}", [img_dict[t][frame_idx] for t in range(start_idx, self.cfg.dataset.num_frames)], step=self.global_step, masks=log_dict,
+    #                             caption=[f"Epoch_{self.current_epoch}_IoU_{[str(iou_obj)[:5] for iou_obj in iou_dict[t][frame_idx].cpu().tolist()]}_Frame_{information[frame_idx]['frames']}" for t in range(start_idx, self.cfg.dataset.num_frames)])
+
+    # fixup
     @torch.no_grad()
     def log_images(self, information, img_dict, sep_mask_dict, mask_dict, gt_mask_dict, iou_dict, batch_idx, train=True):
-        start_idx = 1 if self.cfg.dataset.stage1 else self.cfg.dataset.num_frames-1
+        start_idx = 1 if self.cfg.dataset.stage1 else self.cfg.dataset.num_frames - 1
         for frame_idx in range(len(information)):
             log_dict = []
             for t in range(start_idx, self.cfg.dataset.num_frames):
-                log_dict.append({"ground_truth": {"mask_data" : gt_mask_dict[t][frame_idx].cpu().numpy()}, "prediction": {"mask_data" : mask_dict[t][frame_idx].cpu().numpy()}})
+                log_dict.append({"ground_truth": {"mask_data": gt_mask_dict[t][frame_idx].cpu().numpy()}, "prediction": {"mask_data": mask_dict[t][frame_idx].cpu().numpy()}})
                 for obj_index, sep_obj in enumerate(sep_mask_dict[t][frame_idx]):
-                    log_dict[-1][f"prediction_{obj_index + 1}"] = {"mask_data" : sep_obj.cpu().numpy() * (obj_index + 1)}
+                    log_dict[-1][f"prediction_{obj_index + 1}"] = {"mask_data": sep_obj.cpu().numpy() * (obj_index + 1)}
 
-            self.logger.log_image(f"Images/{'train' if train else 'test'}/{information[frame_idx]['name']}", [img_dict[t][frame_idx] for t in range(start_idx, self.cfg.dataset.num_frames)], step=self.global_step, masks=log_dict,
-                                caption=[f"Epoch_{self.current_epoch}_IoU_{[str(iou_obj)[:5] for iou_obj in iou_dict[t][frame_idx].cpu().tolist()]}_Frame_{information[frame_idx]['frames']}" for t in range(start_idx, self.cfg.dataset.num_frames)])
+            # 提取纯文件名，移除路径中的非法字符
+            clean_name = os.path.basename(information[frame_idx]['name'])
+            self.logger.log_image(
+                f"Images/{'train' if train else 'test'}/{clean_name}",
+                [img_dict[t][frame_idx] for t in range(start_idx, self.cfg.dataset.num_frames)],
+                step=self.global_step,
+                masks=log_dict,
+                caption=[
+                    f"Epoch_{self.current_epoch}_IoU_{[str(iou_obj)[:5] for iou_obj in iou_dict[t][frame_idx].cpu().tolist()]}_Frame_{information[frame_idx]['frames']}"
+                    for t in range(start_idx, self.cfg.dataset.num_frames)
+                ]
+            )
    
     def sigmoid_focal_loss(
         self,
@@ -266,6 +291,7 @@ class CamoSam(L.LightningModule):
         return {'loss': loss_total, 'masks': pred_masks_dict, 'iou': iou_pred_dict} # List([num_true_obj, H, W])
     
     def on_train_batch_end(self, output, batch, batch_idx):
+        batch_size = len(batch['image']) if 'image' in batch else 1
         if self.check_frequency(self.current_epoch):
             img_dict = {}
             sep_mask_dict = {}
@@ -310,7 +336,7 @@ class CamoSam(L.LightningModule):
                 metrics_all[f'Metrics/train/jaccard_single_obj_{t}'] = total_jaccard / total_objects
                 metrics_all[f'Metrics/train/dice_single_obj_{t}'] = total_dice / total_objects
 
-            self.log_dict(metrics_all, on_step=True, on_epoch=True, sync_dist=True)
+            self.log_dict(metrics_all, on_step=True, on_epoch=True, sync_dist=True, batch_size=batch_size)
             
             if batch_idx < 5:
                 self.log_images(batch['info'], img_dict, sep_mask_dict, mask_dict, gt_mask_dict, output['iou'], batch_idx=batch_idx, train=True)
