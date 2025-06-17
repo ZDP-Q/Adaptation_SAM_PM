@@ -6,7 +6,7 @@ from segment_anything import SamPredictor, sam_model_registry
 
 
 # 初始化模型
-def init_sam(model_type="vit_h", checkpoint_path="sam_vit_h_4b8939.pth"):
+def init_sam(model_type="vit_l", checkpoint_path="sam_vit_l_0b3195.pth"):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     sam = sam_model_registry[model_type](checkpoint=checkpoint_path)
     sam.to(device=device)
@@ -54,7 +54,7 @@ def main():
     predictor = init_sam()
 
     # 加载图像
-    image_path = "your_image.jpg"  # 替换为你的图像路径
+    image_path = "0.png"  # 替换为你的图像路径
     image = load_image(image_path)
 
     # 设置图像嵌入
