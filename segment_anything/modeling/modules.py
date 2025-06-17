@@ -3,8 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 
-import xformers.ops as xops
-
 class PropagationModule(nn.Module):
     def __init__(self, cfg) -> None:
         super().__init__()
@@ -145,10 +143,18 @@ class TFMM(nn.Module):
         k = k.reshape(batch_size, seq_len*num_frames, self.num_heads, self.key_head_dim)
         v = v.permute(0, 1, 3, 4, 5, 2).reshape(batch_size, seq_len*num_frames, self.num_heads, self.value_head_dim*num_objects)
 
-        if self.training:
-            values = xops.memory_efficient_attention(q, k, v, p=self.dropout) # (B, 64*64, num_heads, self.head_dim*num_obj=3)
-        else:
-            values = xops.memory_efficient_attention(q, k, v, p=0) # (B, 64*64, num_heads, self.head_dim*num_obj=3)
+        # if self.training:
+        #     values = xops.memory_efficient_attention(q, k, v, p=self.dropout) # (B, 64*64, num_heads, self.head_dim*num_obj=3)
+        # else:
+        #     values = xops.memory_efficient_attention(q, k, v, p=0) # (B, 64*64, num_heads, self.head_dim*num_obj=3)
+        q = q.permute(0, 2, 1, 3).reshape(batch_size * self.num_heads, seq_len, self.key_head_dim)
+        k = k.permute(0, 2, 1, 3).reshape(batch_size * self.num_heads, seq_len * num_frames, self.key_head_dim)
+        v = v.permute(0, 2, 1, 3).reshape(batch_size * self.num_heads, seq_len * num_frames, self.value_head_dim * num_objects)
+
+        attn = F.scaled_dot_product_attention(q, k, v, dropout_p=self.dropout if self.training else 0)
+        attn = attn.reshape(batch_size, self.num_heads, seq_len, self.value_head_dim * num_objects).permute(0, 2, 1, 3)
+        values = attn.reshape(batch_size, 64, 64, self.num_heads * self.value_head_dim, num_objects)
+
         values = values.reshape(batch_size, 64, 64, self.num_heads * self.value_head_dim, num_objects)
         values = values.permute(0, 4, 1, 2, 3) # (B, num_objects=3, 64, 64, [num_heads * self.head_dim] = 256)
 
@@ -183,10 +189,12 @@ class MPAM(nn.Module):
         mk = mk.transpose(1, 2).reshape(batch_size * num_objects, seq_len*num_frames, self.embed_dim) # (B*P, F*64*64, embed_dim=128)
         mv = mv.transpose(1, 2).reshape(batch_size * num_objects, seq_len*num_frames, self.embed_dim) # (B*P, F*64*64, embed_dim=128)
 
-        if self.training:
-            values = xops.memory_efficient_attention(qk, mk, mv, p=self.dropout) # (B*P, 64*64, embed_dim=128)
-        else:
-            values = xops.memory_efficient_attention(qk, mk, mv, p=0) # (B*P, 64*64, embed_dim=128)
+        # if self.training:
+        #     values = xops.memory_efficient_attention(qk, mk, mv, p=self.dropout) # (B*P, 64*64, embed_dim=128)
+        # else:
+        #     values = xops.memory_efficient_attention(qk, mk, mv, p=0) # (B*P, 64*64, embed_dim=128)
+        values = F.scaled_dot_product_attention(qk, mk, mv, dropout_p=self.dropout if self.training else 0)
+
         values = values.reshape(batch_size, num_objects, 64, 64, self.embed_dim) # (B, P, 64, 64, embed_dim=128)
 
         out = torch.cat([qv, values], dim=-1) # (B, P, 64, 64, embed_dim=256)
