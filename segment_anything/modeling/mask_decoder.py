@@ -15,14 +15,14 @@ from .common import LayerNorm2d
 
 class MaskDecoder(nn.Module):
     def __init__(
-        self,
-        *,
-        transformer_dim: int,
-        transformer: nn.Module,
-        num_multimask_outputs: int = 3,
-        activation: Type[nn.Module] = nn.GELU,
-        iou_head_depth: int = 3,
-        iou_head_hidden_dim: int = 256,
+            self,
+            *,
+            transformer_dim: int,
+            transformer: nn.Module,
+            num_multimask_outputs: int = 3,
+            activation: Type[nn.Module] = nn.GELU,
+            iou_head_depth: int = 3,
+            iou_head_hidden_dim: int = 256,
     ) -> None:
         """
         Predicts masks given an image and prompt embeddings, using a
@@ -68,14 +68,31 @@ class MaskDecoder(nn.Module):
             transformer_dim, iou_head_hidden_dim, self.num_mask_tokens, iou_head_depth
         )
 
+        # 修改为回归任务，输出连续的数量值
+        # 输出形状: [1]
+        self.num_prediction_conv = nn.Sequential(
+            nn.Conv2d(self.num_mask_tokens, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32, 16, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((1, 1)),
+            nn.Flatten(),
+            nn.Linear(16, 8),
+            nn.ReLU(inplace=True),
+            nn.Linear(8, 1),
+            nn.Softplus()
+        )
+
     def forward(
-        self,
-        image_embeddings: torch.Tensor,
-        image_pe: torch.Tensor,
-        sparse_prompt_embeddings: torch.Tensor,
-        dense_prompt_embeddings: torch.Tensor,
-        multimask_output: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+            self,
+            image_embeddings: torch.Tensor,
+            image_pe: torch.Tensor,
+            sparse_prompt_embeddings: torch.Tensor,
+            dense_prompt_embeddings: torch.Tensor,
+            multimask_output: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Predict masks given image and prompt embeddings.
 
@@ -90,6 +107,7 @@ class MaskDecoder(nn.Module):
         Returns:
           torch.Tensor: batched predicted masks
           torch.Tensor: batched predictions of mask quality
+          torch.Tensor: batched predictions of num
         """
         masks, iou_pred = self.predict_masks(
             image_embeddings=image_embeddings,
@@ -98,6 +116,8 @@ class MaskDecoder(nn.Module):
             dense_prompt_embeddings=dense_prompt_embeddings,
         )
 
+        # 预测物体数量
+        num_pred = torch.mean(self.predict_num(masks), dim=0)
         # Select the correct mask or masks for output
         if multimask_output:
             mask_slice = slice(1, None)
@@ -107,14 +127,14 @@ class MaskDecoder(nn.Module):
         iou_pred = iou_pred[:, mask_slice]
 
         # Prepare output
-        return masks, iou_pred
+        return masks, iou_pred, num_pred
 
     def predict_masks(
-        self,
-        image_embeddings: torch.Tensor,
-        image_pe: torch.Tensor,
-        sparse_prompt_embeddings: torch.Tensor,
-        dense_prompt_embeddings: torch.Tensor,
+            self,
+            image_embeddings: torch.Tensor,
+            image_pe: torch.Tensor,
+            sparse_prompt_embeddings: torch.Tensor,
+            dense_prompt_embeddings: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Predicts masks. See 'forward' for more details."""
         # Concatenate output tokens
@@ -131,7 +151,7 @@ class MaskDecoder(nn.Module):
         # Run the transformer
         hs, src = self.transformer(src, pos_src, tokens)
         iou_token_out = hs[:, 0, :]
-        mask_tokens_out = hs[:, 1 : (1 + self.num_mask_tokens), :]
+        mask_tokens_out = hs[:, 1: (1 + self.num_mask_tokens), :]
 
         # Upscale mask embeddings and predict masks using the mask tokens
         src = src.transpose(1, 2).view(b, c, h, w)
@@ -148,17 +168,35 @@ class MaskDecoder(nn.Module):
 
         return masks, iou_pred
 
+    def predict_num(self, masks: torch.Tensor) -> torch.Tensor:
+        """
+        对masks进行几层卷积操作，最后输出一个数，预测有多少个物体
+
+        Arguments:
+          masks (torch.Tensor): 预测的masks，形状为 [batch_size, num_masks, height, width]
+
+        Returns:
+          torch.Tensor: 预测的物体数量，形状为 [batch_size, 1]
+        """
+        # 对masks应用sigmoid确保值在0-1之间
+        masks = torch.sigmoid(masks)
+
+        # 通过卷积网络处理masks
+        num_pred = self.num_prediction_conv(masks)
+
+        return num_pred
+
 
 # Lightly adapted from
 # https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py # noqa
 class MLP(nn.Module):
     def __init__(
-        self,
-        input_dim: int,
-        hidden_dim: int,
-        output_dim: int,
-        num_layers: int,
-        sigmoid_output: bool = False,
+            self,
+            input_dim: int,
+            hidden_dim: int,
+            output_dim: int,
+            num_layers: int,
+            sigmoid_output: bool = False,
     ) -> None:
         super().__init__()
         self.num_layers = num_layers

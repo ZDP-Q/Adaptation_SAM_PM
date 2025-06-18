@@ -81,5 +81,13 @@ if __name__ == "__main__":
 
     print(f"日志将保存在: {wandblogger.experiment.dir}")
     trainer.fit(model, train_dataloader)
-
     print("训练完成！离线日志保存在本地，可以稍后同步到服务器。")
+
+
+    # for i, batch in enumerate(train_dataloader):
+    #     print(f"input image shape: {batch['image'].shape}")
+    #     print(f"num_objects: {batch['num_objects'].shape}")
+    #     for key in batch:
+    #         print(f"Key: {key}, Type: {type(batch[key])}")
+    #     break
+
