@@ -60,6 +60,10 @@ class CamoSam(L.LightningModule):
         for param in self.model.propagation_module.parameters():
             param.requires_grad = model_grad.propagation_module
 
+        # 设置卷积计数层为可训练
+        for param in self.model.mask_decoder.num_prediction_conv.parameters():
+            param.requires_grad = True
+
     def configure_optimizers(self) -> Any:
         optimizer = torch.optim.AdamW(
             self.model.parameters(),

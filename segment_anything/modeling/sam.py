@@ -61,12 +61,14 @@ class Sam(nn.Module):
         return self.pixel_mean.device
     
     def getImageEmbeddings(self, input_images):
+        """获取图像embedding"""
         self.image_encoder.eval()
         with torch.no_grad():
             image_embeddings = self.image_encoder(input_images.reshape(-1, 3, 1024, 1024)).reshape(len(input_images), -1, 256, 64, 64)  # Output -> (B, F=3, 256, 64, 64)
         return image_embeddings
     
     def getPropEmbeddings(self, image_embeddings, batched_input, low_res_pred, multimask_output=True, t=1):
+        """获取提示词嵌入"""
         prev_masks = batched_input["prev_masks"][:, :(1 if self.cfg.dataset.stage1 else (self.cfg.dataset.num_frames-1))] # (B, F=2/1, P=3, 256, 256)
         low_res_pred = (low_res_pred > self.mask_threshold).to(dtype=low_res_pred.dtype) # (B, t-1, P=3, 256, 256)
         prev_masks = torch.cat([prev_masks, low_res_pred], dim=1) # (B, F+t-1, P=3, 256, 256)

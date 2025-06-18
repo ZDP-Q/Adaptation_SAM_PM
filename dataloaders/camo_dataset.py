@@ -202,6 +202,7 @@ class VideoDataset(data.Dataset):
         # 1 if object exist, 0 otherwise
         selector = [1 if i < info['num_objects'] else 0 for i in range(self.cfg.max_num_obj)]
         selector = torch.BoolTensor(selector)
+        num = torch.tensor(info['num_objects'], dtype=torch.float32)
 
         data = {
             'image': images, # (num_frames, 3, 1024, 1024) 
@@ -212,7 +213,8 @@ class VideoDataset(data.Dataset):
             'cropped_img': cropped_img, # (num_frames, 3, H, W)
             'original_size': list(all_frame_gt.shape[-2:]),
             'resize_longest_size': list(resize_longest_size),
-            'info': info
+            'info': info,
+            'num_objects': num
         }
         return data
 
@@ -233,7 +235,7 @@ def collate_fn(batch):
     output = {}
     for key in batch[0].keys():
         output[key] = [d[key] for d in batch]
-        if key in ["image", "prev_masks", "selector"]:
+        if key in ["image", "prev_masks", "selector", "num_objects"]:
             output[key] = torch.stack(output[key], 0)
     
     return output

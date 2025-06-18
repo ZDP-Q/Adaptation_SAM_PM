@@ -30,10 +30,10 @@ if __name__ == "__main__":
     )
 
     test_dataloader = get_test_loader(dataset="moca")
-    for i, batch in enumerate(test_dataloader):
-        print(i)
-        print(batch.keys())
-        print(batch)
-        break
 
+    for i, batch in enumerate(test_dataloader):
+        for key in batch:
+            print(f"Key: {key}, Type: {type(batch[key])}")
+            print(batch['num_obj'])
+        break
     # trainer.test(model, test_dataloader)
