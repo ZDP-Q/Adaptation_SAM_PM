@@ -13,12 +13,6 @@ from typing import List, Tuple, Type
 from .common import LayerNorm2d
 
 
-class BatchMeanSqueeze(nn.Module):
-    """对batch维度取平均并压缩维度的自定义层"""
-    def forward(self, x):
-        # x shape: [batch_size, 1] -> [1]
-        return x.mean(dim=0).squeeze()
-
 class MaskDecoder(nn.Module):
     def __init__(
             self,
@@ -88,8 +82,7 @@ class MaskDecoder(nn.Module):
             nn.Linear(16, 8),
             nn.ReLU(inplace=True),
             nn.Linear(8, 1),
-            nn.Softplus(),
-            BatchMeanSqueeze()  # 自定义层
+            nn.Softplus()
         )
 
     def forward(
@@ -124,10 +117,7 @@ class MaskDecoder(nn.Module):
         )
 
         # 预测物体数量
-        num_pred = self.predict_num(masks)
-        # 打印数值
-        print(f"num_pred数值: {num_pred}")
-
+        num_pred = torch.mean(self.predict_num(masks), dim=0)
         # Select the correct mask or masks for output
         if multimask_output:
             mask_slice = slice(1, None)
@@ -137,7 +127,7 @@ class MaskDecoder(nn.Module):
         iou_pred = iou_pred[:, mask_slice]
 
         # Prepare output
-        return masks, iou_pred
+        return masks, iou_pred, num_pred
 
     def predict_masks(
             self,

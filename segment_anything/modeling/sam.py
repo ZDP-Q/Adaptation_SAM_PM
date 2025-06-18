@@ -68,7 +68,7 @@ class Sam(nn.Module):
         return image_embeddings
     
     def getPropEmbeddings(self, image_embeddings, batched_input, low_res_pred, multimask_output=True, t=1):
-        """获取提示词嵌入"""
+        """获取提示词嵌入, 并进行解码输出"""
         prev_masks = batched_input["prev_masks"][:, :(1 if self.cfg.dataset.stage1 else (self.cfg.dataset.num_frames-1))] # (B, F=2/1, P=3, 256, 256)
         low_res_pred = (low_res_pred > self.mask_threshold).to(dtype=low_res_pred.dtype) # (B, t-1, P=3, 256, 256)
         prev_masks = torch.cat([prev_masks, low_res_pred], dim=1) # (B, F+t-1, P=3, 256, 256)
@@ -92,7 +92,7 @@ class Sam(nn.Module):
             # prop_dense_embeddings: (3, 256, 64, 64) -> basically we have 3 prompts
             # prop_sparse_embeddings: (3, 8, 256) -> basically we have 3 prompts, each prompt has 8 points
             
-            low_res_masks, iou_predictions = self.mask_decoder(
+            low_res_masks, iou_predictions, num = self.mask_decoder(
                 image_embeddings=curr_embedding.unsqueeze(0),
                 image_pe=pos_embed,
                 sparse_prompt_embeddings=prop_sparse_embeddings,
@@ -114,7 +114,7 @@ class Sam(nn.Module):
         log_dict["prop_dense_embed"] = all_dense_embeddings
         # log_dict["prop_sparse_embed"] = all_sparse_embeddings
             
-        return outputs, log_dict
+        return outputs, log_dict, num
     
     def getTestPropEmbeddings(self, batched_input, current_frame_embeddings, prev_frames_embeddings, prev_masks, multimask_output=True):
         _, mask_embeddings = self.prompt_encoder(points=None, boxes=None, masks=prev_masks)

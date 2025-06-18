@@ -215,6 +215,10 @@ class CamoSam(L.LightningModule):
         iou = (numerator + 1) / (denominator + 1)
         return iou # [num_true_obj, C]
 
+    def mse_loss(self, inputs, targets):
+        loss = F.mse_loss(inputs, targets)
+        return loss
+
     def training_step(self, batch, batch_idx):
         img_embeddings = self.model.getImageEmbeddings(batch['image']) # (B, F=3, 256, 64, 64)
         bs = len(img_embeddings)
@@ -226,7 +230,9 @@ class CamoSam(L.LightningModule):
         loss_focal = 0
         loss_dice = 0
         loss_iou = 0
+        loss_mse = 0
         loss_total = 0
+        pred_num = None
 
         low_res_pred_list = torch.empty((bs, 0, self.cfg.dataset.max_num_obj, 256, 256), device=batch['image'].device)
         batch_indexing = torch.arange(self.cfg.dataset.max_num_obj, device=batch['image'].device) # [P]
@@ -234,7 +240,8 @@ class CamoSam(L.LightningModule):
 
         start_idx = 1 if self.cfg.dataset.stage1 else self.cfg.dataset.num_frames-1
         for t in range(start_idx, self.cfg.dataset.num_frames):
-            outputs, prop_log_dict = self.model.getPropEmbeddings(img_embeddings, batch, low_res_pred_list, multimask_output=self.cfg.model.multimask_output, t=t)
+            outputs, prop_log_dict, num = self.model.getPropEmbeddings(img_embeddings, batch, low_res_pred_list, multimask_output=self.cfg.model.multimask_output, t=t)
+            pred_num =  num
             low_res_pred_list_tmp = []
             pred_masks_dict[t] = []
             iou_pred_dict[t] = []
@@ -275,7 +282,8 @@ class CamoSam(L.LightningModule):
             low_res_pred_list_tmp = torch.stack(low_res_pred_list_tmp).unsqueeze(1) # (B, 1, P=3, 256, 256)
             low_res_pred_list = torch.cat([low_res_pred_list, low_res_pred_list_tmp], dim=1) # (B, t, P=3, 256, 256)
 
-        loss_total = (loss_total) / (total_num_objects)
+        loss_mse = self.mse_loss(pred_num, batch['num_objects'])
+        loss_total = (loss_total+loss_mse) / (total_num_objects)
         avg_focal = (self.cfg.focal_wt * loss_focal) / (total_num_objects)
         avg_dice = loss_dice / (total_num_objects)
         avg_iou = loss_iou / (total_num_objects)
@@ -289,6 +297,9 @@ class CamoSam(L.LightningModule):
             log_dict[f'{key}/mean'] = prop_log_dict[key].mean()
             log_dict[f'{key}/sq_mean'] = (prop_log_dict[key] ** 2).mean()
             log_dict[f'{key}/std'] = prop_log_dict[key].std()
+
+        log_dict["0pred_num"] = pred_num
+        log_dict["0pred_num_gt"] = batch['num_objects']
 
         self.log_dict(log_dict, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True, batch_size=bs)
 
