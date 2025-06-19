@@ -14,6 +14,7 @@ from torchvision.transforms.functional import resize, pil_to_tensor
 from segment_anything.utils.transforms import ResizeLongestSide
 from dataloaders.range_transform import im_normalization, im_mean
 from dataloaders.reseed import reseed
+import pickle
 
 class VOSDataset(Dataset):
     """
@@ -32,6 +33,10 @@ class VOSDataset(Dataset):
         self.videos = []
         self.frames = {}
         self.cfg = cfg
+
+        with open("/data/zxy/pycharm/Adaptation_SAM_PM/video_scene_num_objects.pkl", 'rb') as f:
+            result_dict = pickle.load(f)
+        self.num_objects_dict = result_dict
 
         self.pixel_mean = torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1)
         self.pixel_std = torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1)
@@ -108,6 +113,7 @@ class VOSDataset(Dataset):
         video = self.videos[idx]
         info = {}
         info['name'] = video
+        # print(video)
         
         if self.cfg.name == "moca":
             vid_im_path = path.join(self.im_root, video, "Imgs")
@@ -199,7 +205,9 @@ class VOSDataset(Dataset):
         if len(target_objects) > self.cfg.max_num_obj:
             target_objects = np.random.choice(target_objects, size=self.cfg.max_num_obj, replace=False)
 
-        info['num_objects'] = max(1, len(target_objects))
+        # info['num_objects'] = max(1, len(target_objects))
+
+        info['num_objects'] = self.num_objects_dict.get(video, 5)
 
         masks = np.stack(masks, 0)
 

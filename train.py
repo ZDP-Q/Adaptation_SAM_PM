@@ -13,6 +13,7 @@ from dataloaders.vos_dataset import get_loader as get_loader_moca
 from dataloaders.moca_test import get_test_loader
 from callbacks import WandB_Logger
 from config import cfg
+import matplotlib.pyplot as plt
 
 if __name__ == "__main__":
     # 配置 wandb 离线模式 - 必须在任何 wandb 操作之前设置
@@ -26,7 +27,7 @@ if __name__ == "__main__":
     os.environ["WANDB_SILENT"] = "true"  # 减少输出信息
 
     L.seed_everything(2023, workers=True)
-    torch.set_float32_matmul_precision('highest')
+    torch.set_float32_matmul_precision('high')
 
     print("WandB 配置为离线模式，日志将保存在本地")
 
@@ -44,9 +45,7 @@ if __name__ == "__main__":
         project="CVPR_Final",
         save_code=True,
         settings=wandb.Settings(
-            code_dir=".",
-            # 离线模式下的额外设置
-            _offline=True,  # 明确指定离线
+            code_dir="."
         ),
         # 可以指定实验名称和标签
         name="sam_pm_experiment",
@@ -81,6 +80,45 @@ if __name__ == "__main__":
 
     print(f"日志将保存在: {wandblogger.experiment.dir}")
     trainer.fit(model, train_dataloader)
+
+    total_losses_for_plotting = model.train_benchmark
+
+    # 训练结束后，从模型中获取收集到的损失数据
+    mse_losses_for_plotting = model.train_mse_benchmark  # **新增：获取 MSE_LOSS 数据**
+    import datetime
+    # --- 绘制 Total Loss ---
+    if total_losses_for_plotting:
+        print("绘制训练总损失曲线...")
+        plt.figure(figsize=(10, 6))
+        plt.plot(total_losses_for_plotting, label='Total Loss (per step)')
+        plt.title('Training Total Loss Progression')
+        plt.xlabel('Training Steps')
+        plt.ylabel('Loss Value')
+        plt.legend()
+        plt.grid(True)
+        plot_filename_total = f"./loss/total_loss_{datetime.datetime.now()}.png"
+        plt.savefig(plot_filename_total)
+        print(f"总损失图已保存为：{plot_filename_total}")
+        # plt.show() # 如果你想独立显示每个图，可以保留
+
+    # --- 绘制 MSE Loss ---
+    if mse_losses_for_plotting:
+        print("绘制 MSE 损失曲线...")
+        plt.figure(figsize=(10, 6))
+        plt.plot(mse_losses_for_plotting, label='MSE Loss (per step)', color='orange')  # 使用不同颜色
+        plt.title('Training MSE Loss Progression')
+        plt.xlabel('Training Steps')
+        plt.ylabel('MSE Loss Value')
+        plt.legend()
+        plt.grid(True)
+        plot_filename_mse = f"./loss/mse_loss_{datetime.datetime.now()}.png"
+        plt.savefig(plot_filename_mse)
+        print(f"MSE 损失图已保存为：{plot_filename_mse}")
+        plt.show()  # 显示 MSE 损失图
+
+    else:
+        print("没有收集到 MSE 损失数据，无法绘制图表。请检查 CamoSam 模型的 `train_mse_benchmark` 列表是否被正确填充。")
+
     print("训练完成！离线日志保存在本地，可以稍后同步到服务器。")
 
 

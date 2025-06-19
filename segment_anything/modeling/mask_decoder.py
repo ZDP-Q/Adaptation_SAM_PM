@@ -68,20 +68,16 @@ class MaskDecoder(nn.Module):
             transformer_dim, iou_head_hidden_dim, self.num_mask_tokens, iou_head_depth
         )
 
-        # 修改为回归任务，输出连续的数量值
-        # 输出形状: [1]
         self.num_prediction_conv = nn.Sequential(
-            nn.Conv2d(self.num_mask_tokens, 64, kernel_size=3, padding=1),
+            # 单个卷积块
+            nn.Conv2d(self.num_mask_tokens, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
-            nn.Conv2d(64, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(32, 16, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+
+            # 全局池化和输出
             nn.AdaptiveAvgPool2d((1, 1)),
             nn.Flatten(),
-            nn.Linear(16, 8),
-            nn.ReLU(inplace=True),
-            nn.Linear(8, 1),
+            nn.Linear(32, 1),
             nn.Softplus()
         )
 
